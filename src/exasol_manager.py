@@ -4,9 +4,7 @@ import pyexasol
 
 
 def get_connection():
-    """
-    Connect to Exasol using environment variables.
-    """
+    """Connect to the local or configured Exasol database."""
 
     host = os.getenv("EXASOL_HOST")
     user = os.getenv("EXASOL_USER")
@@ -18,27 +16,25 @@ def get_connection():
             "Set EXASOL_HOST, EXASOL_USER and EXASOL_PASSWORD."
         )
 
-    connection = pyexasol.connect(
+    return pyexasol.connect(
         dsn=host,
         user=user,
         password=password,
-        compression=True
+        compression=True,
+        encryption=True,
+        websocket_sslopt={"cert_reqs": 0}
     )
-
-    return connection
 
 
 def load_demand_data(df):
-    """
-    Load synthetic demand data into Exasol.
-    """
+    """Create the Exasol table and upload demand history."""
 
     connection = get_connection()
 
     try:
-        connection.execute("""
-            CREATE SCHEMA IF NOT EXISTS SUPPLYGUARD
-        """)
+        connection.execute(
+            "CREATE SCHEMA IF NOT EXISTS SUPPLYGUARD"
+        )
 
         connection.execute("""
             CREATE TABLE IF NOT EXISTS SUPPLYGUARD.DEMAND_HISTORY (
@@ -54,23 +50,28 @@ def load_demand_data(df):
             )
         """)
 
-        connection.execute("""
-            TRUNCATE TABLE SUPPLYGUARD.DEMAND_HISTORY
-        """)
+        connection.execute(
+            "TRUNCATE TABLE SUPPLYGUARD.DEMAND_HISTORY"
+        )
 
         connection.import_from_pandas(
             df,
-            "SUPPLYGUARD.DEMAND_HISTORY"
+            ("SUPPLYGUARD", "DEMAND_HISTORY")
         )
+
+        result = connection.execute("""
+            SELECT COUNT(*)
+            FROM SUPPLYGUARD.DEMAND_HISTORY
+        """).fetchone()
+
+        print(f"Successfully uploaded {result[0]} records to Exasol.")
 
     finally:
         connection.close()
 
 
 def fetch_demand_data():
-    """
-    Retrieve demand history from Exasol.
-    """
+    """Retrieve demand history from Exasol."""
 
     connection = get_connection()
 
